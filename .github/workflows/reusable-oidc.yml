@@ -1,0 +1,17 @@
+name: Owned reusable OIDC callee
+
+on:
+  workflow_call:
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Capture caller and reusable workflow identity
+        uses: Beta-Test-Org/owned-actions-oidc-boundary-20260920/.github/actions/capture-oidc@main
+        with:
+          case-label: reusable-callee

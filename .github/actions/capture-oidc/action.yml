@@ -1,0 +1,131 @@
+name: Capture sanitized GitHub OIDC claims
+description: Requests a synthetic-audience token and prints selected claims only
+inputs:
+  case-label:
+    description: Non-secret label for the differential case
+    required: false
+    default: unspecified
+runs:
+  using: composite
+  steps:
+    - name: Request and decode without persisting the JWT
+      shell: bash
+      env:
+        OWNED_CASE_LABEL: ${{ inputs.case-label }}
+        OWNED_OIDC_AUDIENCE: urn:owned-actions-lab:github-oidc-boundary
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        import base64
+        import json
+        import os
+        import urllib.parse
+        import urllib.request
+
+        audience = os.environ["OWNED_OIDC_AUDIENCE"]
+        request_url = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"]
+        separator = "&" if "?" in request_url else "?"
+        request_url += separator + "audience=" + urllib.parse.quote(audience, safe="")
+        request = urllib.request.Request(
+            request_url,
+            headers={
+                "Authorization": "Bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"],
+                "Accept": "application/json",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=20) as response:
+            token = json.load(response)["value"]
+
+        encoded_payload = token.split(".")[1]
+        encoded_payload += "=" * (-len(encoded_payload) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(encoded_payload.encode()))
+
+        selected_claim_keys = (
+            "iss",
+            "aud",
+            "sub",
+            "actor",
+            "actor_id",
+            "base_ref",
+            "check_run_id",
+            "environment",
+            "event_name",
+            "head_ref",
+            "job_workflow_ref",
+            "job_workflow_sha",
+            "ref",
+            "ref_type",
+            "repository",
+            "repository_id",
+            "repository_owner",
+            "repository_owner_id",
+            "repository_visibility",
+            "run_attempt",
+            "run_id",
+            "run_number",
+            "runner_environment",
+            "workflow",
+            "workflow_ref",
+            "workflow_sha",
+        )
+        claims = {key: payload[key] for key in selected_claim_keys if key in payload}
+
+        with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as handle:
+            event = json.load(handle)
+        pull_request = event.get("pull_request") or {}
+        head = pull_request.get("head") or {}
+        base = pull_request.get("base") or {}
+        head_repo = head.get("repo") or {}
+        base_repo = base.get("repo") or {}
+        event_context = {
+            "case_label": os.environ["OWNED_CASE_LABEL"],
+            "event_name": os.environ.get("GITHUB_EVENT_NAME"),
+            "repository": os.environ.get("GITHUB_REPOSITORY"),
+            "repository_id": os.environ.get("GITHUB_REPOSITORY_ID"),
+            "repository_owner": os.environ.get("GITHUB_REPOSITORY_OWNER"),
+            "actor": os.environ.get("GITHUB_ACTOR"),
+            "triggering_actor": os.environ.get("GITHUB_TRIGGERING_ACTOR"),
+            "ref": os.environ.get("GITHUB_REF"),
+            "sha": os.environ.get("GITHUB_SHA"),
+            "head_ref": os.environ.get("GITHUB_HEAD_REF"),
+            "base_ref": os.environ.get("GITHUB_BASE_REF"),
+            "run_id": os.environ.get("GITHUB_RUN_ID"),
+            "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+            "pr_head_repo": head_repo.get("full_name"),
+            "pr_head_repo_id": head_repo.get("id"),
+            "pr_head_repo_is_fork": head_repo.get("fork"),
+            "pr_head_sha": head.get("sha"),
+            "pr_base_repo": base_repo.get("full_name"),
+            "pr_base_repo_id": base_repo.get("id"),
+            "pr_base_sha": base.get("sha"),
+        }
+        boundary = {
+            "raw_token_printed": False,
+            "cloud_exchange_performed": False,
+            "repository_matches_run_context": claims.get("repository") == event_context["repository"],
+            "pr_source_differs_from_base": bool(
+                event_context["pr_head_repo"]
+                and event_context["pr_base_repo"]
+                and event_context["pr_head_repo"] != event_context["pr_base_repo"]
+            ),
+            "head_repository_claim_present": any(
+                key in payload for key in ("head_repository", "head_repository_id")
+            ),
+            "job_workflow_ref_present": "job_workflow_ref" in payload,
+            "environment_claim_present": "environment" in payload,
+        }
+
+        print("OIDC_CLAIMS_JSON=" + json.dumps(claims, sort_keys=True, separators=(",", ":")))
+        print("EVENT_CONTEXT_JSON=" + json.dumps(event_context, sort_keys=True, separators=(",", ":")))
+        print("BOUNDARY_RESULT_JSON=" + json.dumps(boundary, sort_keys=True, separators=(",", ":")))
+        print("OWNED_OIDC_CAPTURE=PASS")
+
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+            summary.write("## Owned OIDC boundary capture\n\n")
+            summary.write("- Raw token printed: no\n")
+            summary.write("- Cloud exchange performed: no\n")
+            summary.write("- Event: `" + str(event_context["event_name"]) + "`\n")
+            summary.write("- Subject: `" + str(claims.get("sub")) + "`\n")
+            summary.write("- Repository: `" + str(claims.get("repository")) + "`\n")
+            summary.write("- Source repository: `" + str(event_context["pr_head_repo"]) + "`\n")
+        PY

@@ -1,0 +1,13 @@
+name: Owned reusable caller without ID token
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  call:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-oidc.yml

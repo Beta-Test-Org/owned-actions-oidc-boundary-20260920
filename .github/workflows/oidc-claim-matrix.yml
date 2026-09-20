@@ -1,0 +1,23 @@
+name: Owned OIDC claim matrix
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  pull_request:
+  pull_request_target:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Capture target execution and source event identity
+        uses: Beta-Test-Org/owned-actions-oidc-boundary-20260920/.github/actions/capture-oidc@main
+        with:
+          case-label: event-matrix

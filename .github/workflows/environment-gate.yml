@@ -1,0 +1,20 @@
+name: Owned protected environment OIDC gate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: production-oidc-lab
+    steps:
+      - name: Capture environment-bound identity
+        uses: Beta-Test-Org/owned-actions-oidc-boundary-20260920/.github/actions/capture-oidc@main
+        with:
+          case-label: protected-environment
