@@ -1,0 +1,52 @@
+name: Owned PR target head-code boundary
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  execute-owned-head:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Materialize the exact researcher-owned fork commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t source_meta < <(
+            python3 - <<'PY'
+          import json
+          import os
+
+          with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as handle:
+              event = json.load(handle)
+          head = event["pull_request"]["head"]
+          print(head["repo"]["clone_url"])
+          print(head["sha"])
+          print(head["repo"]["full_name"])
+          PY
+          )
+          head_clone_url="${source_meta[0]}"
+          head_sha="${source_meta[1]}"
+          head_repo="${source_meta[2]}"
+          test "$head_repo" = "Jhounx/owned-actions-oidc-boundary-20260920"
+          git init --quiet owned-head
+          git -C owned-head remote add origin "$head_clone_url"
+          git -C owned-head fetch --quiet --depth=1 origin "$head_sha"
+          git -C owned-head checkout --quiet --detach "$head_sha"
+          test "$(git -C owned-head rev-parse HEAD)" = "$head_sha"
+          printf 'OWNED_HEAD_REPOSITORY=%s\n' "$head_repo"
+          printf 'OWNED_HEAD_SHA=%s\n' "$head_sha"
+
+      - name: Execute the controlled head probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 owned-head/owned_head_oidc_probe.py
