@@ -1,0 +1,55 @@
+name: Owned low-trust cache-mode boundary
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+
+jobs:
+  default-read-only:
+    if: github.event.pull_request.head.repo.full_name == 'Jhounx/owned-actions-oidc-boundary-20260920'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Create harmless cache marker
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p cache-default
+          printf 'source=%s\nmode=default\n' "$HEAD_SHA" > cache-default/marker.txt
+          printf 'OWNED_CACHE_DEFAULT_EFFECTIVE_MODE=%s\n' "${ACTIONS_CACHE_MODE:-unset}"
+
+      - name: Attempt save under the low-trust default
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: cache-default
+          key: owned-low-trust-default-${{ github.run_id }}
+
+  explicit-write-opt-out:
+    if: github.event.pull_request.head.repo.full_name == 'Jhounx/owned-actions-oidc-boundary-20260920'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    cache-mode: write
+    steps:
+      - name: Create harmless cache marker
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p cache-explicit
+          printf 'source=%s\nmode=explicit-write\n' "$HEAD_SHA" > cache-explicit/marker.txt
+          printf 'OWNED_CACHE_EXPLICIT_EFFECTIVE_MODE=%s\n' "${ACTIONS_CACHE_MODE:-unset}"
+
+      - name: Save after the explicit write opt-out
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: cache-explicit
+          key: owned-low-trust-explicit-${{ github.run_id }}
