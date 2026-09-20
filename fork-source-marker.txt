@@ -1,0 +1,6 @@
+Researcher-owned fork source marker.
+
+This harmless file exists only to trigger the pull_request and
+pull_request_target identity matrix. It does not change workflow code.
+
+Cache-boundary synchronization marker: 2026-09-20.
