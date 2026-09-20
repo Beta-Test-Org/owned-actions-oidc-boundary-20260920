@@ -1,0 +1,53 @@
+name: Owned privileged workflow-run artifact boundary
+
+on:
+  workflow_run:
+    workflows:
+      - Owned untrusted artifact producer
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+jobs:
+  execute-owned-artifact:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == 'Jhounx/owned-actions-oidc-boundary-20260920'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Record the low-trust producer identity
+        env:
+          SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+          SOURCE_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'OWNED_WORKFLOW_RUN_SOURCE_EVENT=%s\n' "$SOURCE_EVENT"
+          printf 'OWNED_WORKFLOW_RUN_SOURCE_REPOSITORY=%s\n' "$SOURCE_REPOSITORY"
+          printf 'OWNED_WORKFLOW_RUN_SOURCE_RUN_ID=%s\n' "$SOURCE_RUN_ID"
+          printf 'OWNED_WORKFLOW_RUN_SOURCE_SHA=%s\n' "$SOURCE_SHA"
+
+      - name: Download the artifact from the exact triggering run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: owned-untrusted-payload
+          path: received
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+          repository: ${{ github.repository }}
+
+      - name: Execute the controlled artifact probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f received/owned_workflow_run_probe.py
+          python3 received/owned_workflow_run_probe.py
+

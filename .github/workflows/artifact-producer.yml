@@ -1,0 +1,41 @@
+name: Owned untrusted artifact producer
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+
+jobs:
+  package-owned-source:
+    if: github.event.pull_request.head.repo.full_name == 'Jhounx/owned-actions-oidc-boundary-20260920'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Materialize the exact researcher-owned fork commit
+        env:
+          HEAD_CLONE_URL: ${{ github.event.pull_request.head.repo.clone_url }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init --quiet owned-source
+          git -C owned-source remote add origin "$HEAD_CLONE_URL"
+          git -C owned-source fetch --quiet --depth=1 origin "$HEAD_SHA"
+          git -C owned-source checkout --quiet --detach "$HEAD_SHA"
+          test "$(git -C owned-source rev-parse HEAD)" = "$HEAD_SHA"
+          test -f owned-source/owned_workflow_run_probe.py
+          printf 'OWNED_ARTIFACT_SOURCE_SHA=%s\n' "$HEAD_SHA"
+
+      - name: Upload the controlled untrusted payload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: owned-untrusted-payload
+          path: owned-source/owned_workflow_run_probe.py
+          if-no-files-found: error
+          retention-days: 1
+
